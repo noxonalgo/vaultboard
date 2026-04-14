@@ -16,6 +16,9 @@ import {
   Move,
   ExternalLink,
   AlertCircle,
+  Download,
+  Upload,
+  Database,
   X,
 } from "lucide-react";
 
@@ -304,9 +307,13 @@ export default function App() {
   const [copiedItemId, setCopiedItemId] = useState(null);
   const [manualCopyValue, setManualCopyValue] = useState("");
   const [manualCopyOpen, setManualCopyOpen] = useState(false);
+  const [importExportOpen, setImportExportOpen] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importSuccess, setImportSuccess] = useState("");
   const [newSection, setNewSection] = useState({ name: "", description: "" });
   const [newItem, setNewItem] = useState(createEmptyItem);
   const manualCopyTextareaRef = useRef(null);
+  const importFileRef = useRef(null);
 
   const activeSection = useMemo(
     () => sections.find((section) => section.id === activeSectionId) || sections[0] || null,
@@ -501,6 +508,78 @@ export default function App() {
     }, 1600);
   }
 
+  function handleExportData() {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      app: "VaultBoard",
+      version: 1,
+      activeSectionId,
+      sections,
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    anchor.href = url;
+    anchor.download = `vaultboard-backup-${date}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.URL.revokeObjectURL(url);
+
+    setImportSuccess("Dáta boli exportované do JSON súboru.");
+    setImportError("");
+    setImportExportOpen(true);
+  }
+
+  function handleOpenImportPicker() {
+    setImportError("");
+    setImportSuccess("");
+    importFileRef.current?.click();
+  }
+
+  function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const raw = String(reader.result || "");
+        const parsed = JSON.parse(raw);
+        const importedSections = parsed?.sections;
+        const importedActiveSectionId = parsed?.activeSectionId;
+
+        if (!isValidSectionsData(importedSections)) {
+          throw new Error("Neplatný formát zálohy.");
+        }
+
+        setSections(importedSections);
+        setActiveSectionId(
+          importedSections.some((section) => section.id === importedActiveSectionId)
+            ? importedActiveSectionId
+            : importedSections[0]?.id || "prompty"
+        );
+        setImportSuccess("Import prebehol úspešne.");
+        setImportError("");
+        setImportExportOpen(true);
+      } catch {
+        setImportError("Tento súbor sa nepodarilo importovať. Skontroluj, či ide o VaultBoard JSON zálohu.");
+        setImportSuccess("");
+        setImportExportOpen(true);
+      } finally {
+        if (event.target) {
+          event.target.value = "";
+        }
+      }
+    };
+
+    reader.readAsText(file);
+  }
+
   function handleResetAllData() {
     setSections(starterData);
     setActiveSectionId(starterData[0]?.id || "prompty");
@@ -585,6 +664,39 @@ export default function App() {
               Zavrieť
             </AppButton>
           </div>
+        </div>
+      </Modal>
+
+      <Modal open={importExportOpen} onClose={() => setImportExportOpen(false)} title="Export / Import dát" maxWidth="max-w-xl">
+        <div className="space-y-4 pt-2">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+            Tu si vieš stiahnuť zálohu celej databázy do JSON a neskôr ju znova nahrať.
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <AppButton onClick={handleExportData} className="w-full rounded-2xl">
+              <Download className="h-4 w-4" />
+              Export JSON
+            </AppButton>
+            <AppButton variant="outline" onClick={handleOpenImportPicker} className="w-full rounded-2xl">
+              <Upload className="h-4 w-4" />
+              Import JSON
+            </AppButton>
+          </div>
+
+          <input ref={importFileRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
+
+          {importSuccess ? (
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+              {importSuccess}
+            </div>
+          ) : null}
+
+          {importError ? (
+            <div className="rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
+              {importError}
+            </div>
+          ) : null}
         </div>
       </Modal>
 
@@ -842,6 +954,19 @@ export default function App() {
                 <AppButton onClick={() => setItemDialogOpen(true)} className="h-11 rounded-2xl">
                   <Plus className="h-4 w-4" />
                   Pridať položku
+                </AppButton>
+
+                <AppButton
+                  variant="outline"
+                  onClick={() => {
+                    setImportSuccess("");
+                    setImportError("");
+                    setImportExportOpen(true);
+                  }}
+                  className="h-11 rounded-2xl"
+                >
+                  <Database className="h-4 w-4" />
+                  Záloha dát
                 </AppButton>
 
                 <AppButton variant="outline" onClick={handleResetAllData} className="h-11 rounded-2xl">
