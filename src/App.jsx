@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { createClient } from "@supabase/supabase-js";
 import {
   Plus,
   Link as LinkIcon,
@@ -20,12 +21,20 @@ import {
   Upload,
   Database,
   X,
+  Cloud,
+  CloudOff,
+  LoaderCircle,
 } from "lucide-react";
 
-const STORAGE_KEY = "vaultboard-app-data";
-const ACTIVE_SECTION_KEY = "vaultboard-active-section";
 const AUTH_KEY = "vaultboard-authenticated";
 const APP_PASSWORD = "07092024tw";
+
+const SUPABASE_URL = "https://qdpihvqcslgciwaqylpm.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_1lP2ZUZln2soojnA8pLGEw_Y9Hz9h4V";
+const SUPABASE_STATE_TABLE = "vaultboard_state";
+const SUPABASE_STATE_ROW_ID = "main";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
 const starterData = [
   {
@@ -214,21 +223,11 @@ function isValidSectionsData(value) {
 }
 
 function loadSections() {
-  if (typeof window === "undefined") return starterData;
-
-  try {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (!saved) return starterData;
-    const parsed = JSON.parse(saved);
-    return isValidSectionsData(parsed) ? parsed : starterData;
-  } catch {
-    return starterData;
-  }
+  return starterData;
 }
 
 function loadActiveSectionId(fallbackSections) {
-  if (typeof window === "undefined") return fallbackSections[0]?.id || "prompty";
-  return window.localStorage.getItem(ACTIVE_SECTION_KEY) || fallbackSections[0]?.id || "prompty";
+  return fallbackSections[0]?.id || "prompty";
 }
 
 function createEmptyItem() {
@@ -289,6 +288,60 @@ async function copyTextToClipboard(text) {
   return { success: false, method: "manual" };
 }
 
+async function fetchRemoteState() {
+  const { data, error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .select("id, sections, active_section_id")
+    .eq("id", SUPABASE_STATE_ROW_ID)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function createRemoteStateFromLocal(sections, activeSectionId) {
+  const payload = {
+    id: SUPABASE_STATE_ROW_ID,
+    sections,
+    active_section_id: activeSectionId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from(SUPABASE_STATE_TABLE).upsert(payload, { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function saveRemoteState(sections, activeSectionId) {
+  const payload = {
+    id: SUPABASE_STATE_ROW_ID,
+    sections,
+    active_section_id: activeSectionId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from(SUPABASE_STATE_TABLE).upsert(payload, { onConflict: "id" });
+  if (error) throw error;
+}
+
+function SyncStatusBadge({ status, message }) {
+  const map = {
+    idle: { icon: Cloud, text: "Cloud aktívny", className: "text-emerald-300 border-emerald-400/20 bg-emerald-400/10" },
+    loading: { icon: LoaderCircle, text: "Načítavam cloud", className: "text-sky-300 border-sky-400/20 bg-sky-400/10" },
+    saving: { icon: LoaderCircle, text: "Ukladám do cloudu", className: "text-amber-300 border-amber-400/20 bg-amber-400/10" },
+    error: { icon: CloudOff, text: message || "Chyba synchronizácie", className: "text-red-300 border-red-400/20 bg-red-400/10" },
+  };
+
+  const config = map[status] || map.idle;
+  const Icon = config.icon;
+
+  return (
+    <span className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium", config.className)}>
+      <Icon className={cn("h-3.5 w-3.5", status === "loading" || status === "saving" ? "animate-spin" : "")} />
+      {config.text}
+    </span>
+  );
+}
+
 export default function App() {
   const initialSections = loadSections();
 
@@ -312,8 +365,13 @@ export default function App() {
   const [importSuccess, setImportSuccess] = useState("");
   const [newSection, setNewSection] = useState({ name: "", description: "" });
   const [newItem, setNewItem] = useState(createEmptyItem);
+  const [syncStatus, setSyncStatus] = useState("idle");
+  const [syncMessage, setSyncMessage] = useState("");
+  const [remoteReady, setRemoteReady] = useState(false);
   const manualCopyTextareaRef = useRef(null);
   const importFileRef = useRef(null);
+  const lastSavedStateRef = useRef("");
+  const saveTimeoutRef = useRef(null);
 
   const activeSection = useMemo(
     () => sections.find((section) => section.id === activeSectionId) || sections[0] || null,
@@ -336,20 +394,8 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sections));
-  }, [sections]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
     window.localStorage.setItem(AUTH_KEY, isAuthenticated ? "true" : "false");
   }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (activeSectionId) {
-      window.localStorage.setItem(ACTIVE_SECTION_KEY, activeSectionId);
-    }
-  }, [activeSectionId]);
 
   useEffect(() => {
     if (!sections.length) return;
@@ -364,6 +410,90 @@ export default function App() {
     manualCopyTextareaRef.current.focus();
     manualCopyTextareaRef.current.select();
   }, [manualCopyOpen]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let isCancelled = false;
+
+    async function loadFromSupabase() {
+      setSyncStatus("loading");
+      setSyncMessage("");
+
+      try {
+        const remote = await fetchRemoteState();
+
+        if (isCancelled) return;
+
+        if (!remote) {
+          await createRemoteStateFromLocal(starterData, starterData[0]?.id || "prompty");
+          if (isCancelled) return;
+          setSections(starterData);
+          setActiveSectionId(starterData[0]?.id || "prompty");
+          lastSavedStateRef.current = JSON.stringify({ sections: starterData, activeSectionId: starterData[0]?.id || "prompty" });
+          setRemoteReady(true);
+          setSyncStatus("idle");
+          return;
+        }
+
+        const remoteSections = isValidSectionsData(remote.sections) ? remote.sections : starterData;
+        const remoteActiveSectionId =
+          remoteSections.some((section) => section.id === remote.active_section_id)
+            ? remote.active_section_id
+            : remoteSections[0]?.id || "prompty";
+
+        setSections(remoteSections);
+        setActiveSectionId(remoteActiveSectionId);
+        lastSavedStateRef.current = JSON.stringify({ sections: remoteSections, activeSectionId: remoteActiveSectionId });
+        setRemoteReady(true);
+        setSyncStatus("idle");
+      } catch (error) {
+        if (isCancelled) return;
+        const message = error?.message || "Nepodarilo sa načítať dáta zo Supabase.";
+        setSyncStatus("error");
+        setSyncMessage(message);
+        setRemoteReady(false);
+      }
+    }
+
+    loadFromSupabase();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !remoteReady || !activeSectionId) return;
+
+    const nextSerializedState = JSON.stringify({ sections, activeSectionId });
+    if (lastSavedStateRef.current === nextSerializedState) return;
+
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+    }
+
+    setSyncStatus("saving");
+    setSyncMessage("");
+
+    saveTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        await saveRemoteState(sections, activeSectionId);
+        lastSavedStateRef.current = nextSerializedState;
+        setSyncStatus("idle");
+      } catch (error) {
+        const message = error?.message || "Nepodarilo sa uložiť dáta do Supabase.";
+        setSyncStatus("error");
+        setSyncMessage(message);
+      }
+    }, 700);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [sections, activeSectionId, isAuthenticated, remoteReady]);
 
   function handleLogin(event) {
     event?.preventDefault?.();
@@ -380,6 +510,9 @@ export default function App() {
     setIsAuthenticated(false);
     setPasswordInput("");
     setLoginError("");
+    setRemoteReady(false);
+    setSyncStatus("idle");
+    setSyncMessage("");
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(AUTH_KEY);
     }
@@ -586,10 +719,6 @@ export default function App() {
     setSearch("");
     resetItemForm();
 
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(STORAGE_KEY);
-      window.localStorage.removeItem(ACTIVE_SECTION_KEY);
-    }
   }
 
   const ActiveIcon = getIcon(activeSection?.icon);
@@ -634,6 +763,10 @@ export default function App() {
                 {loginError}
               </div>
             ) : null}
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-xs text-slate-400">
+              Po prihlásení sa aplikácia automaticky napojí na Supabase a načíta tvoju databázu z cloudu.
+            </div>
 
             <AppButton type="submit" className="h-12 w-full rounded-2xl">
               Vstúpiť do aplikácie
@@ -867,9 +1000,13 @@ export default function App() {
               <CardContent className="p-4">
                 <div className="text-sm text-slate-400">Spolu položiek</div>
                 <div className="mt-1 text-3xl font-semibold">{totalItems}</div>
-                <div className="mt-3 text-xs text-slate-400">Ukladaj prompty, linky, obrázky a vlastné sekcie na jednom mieste.</div>
+                <div className="mt-3 text-xs text-slate-400">Dáta sa ukladajú iba do Supabase cloudu. Táto verzia už nepoužíva localStorage pre obsah databázy.</div>
               </CardContent>
             </Card>
+
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <SyncStatusBadge status={syncStatus} message={syncMessage} />
+            </div>
 
             <div className="mt-6 flex items-center justify-between">
               <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Sekcie</div>
@@ -879,7 +1016,7 @@ export default function App() {
               </AppButton>
             </div>
 
-            <ScrollArea className="mt-4 h-[calc(100vh-280px)] pr-1">
+            <ScrollArea className="mt-4 h-[calc(100vh-320px)] pr-1">
               <div className="space-y-2">
                 {sections.map((section) => {
                   const Icon = getIcon(section.icon);
@@ -933,6 +1070,7 @@ export default function App() {
                   <div className="flex flex-wrap items-center gap-3">
                     <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{activeSection?.name}</h1>
                     <Badge>{activeSection?.items.length || 0} položiek</Badge>
+                    <SyncStatusBadge status={syncStatus} message={syncMessage} />
                   </div>
                   <p className="mt-2 max-w-2xl text-sm text-slate-400 md:text-base">
                     {activeSection?.description || "Vybuduj si vlastnú knižnicu promptov, odkazov, obrázkov a poznámok v elegantnom rozhraní."}
@@ -967,146 +1105,4 @@ export default function App() {
                 >
                   <Database className="h-4 w-4" />
                   Záloha dát
-                </AppButton>
-
-                <AppButton variant="outline" onClick={handleResetAllData} className="h-11 rounded-2xl">
-                  Reset dát
-                </AppButton>
-
-                <AppButton variant="outline" onClick={handleLogout} className="h-11 rounded-2xl">
-                  Odhlásiť
-                </AppButton>
-              </div>
-            </div>
-
-            {filteredItems.length === 0 ? (
-              <Card className="text-white backdrop-blur-xl">
-                <CardContent className="flex min-h-[320px] flex-col items-center justify-center p-10 text-center">
-                  <div className="rounded-2xl bg-white/10 p-4">
-                    <ImageIcon className="h-8 w-8 text-slate-300" />
-                  </div>
-                  <h2 className="mt-5 text-2xl font-semibold">Zatiaľ tu nič nie je</h2>
-                  <p className="mt-2 max-w-md text-slate-400">Pridaj prvý prompt, link, obrázok alebo poznámku a vytvor si prehľadnú vizuálnu knižnicu.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {filteredItems.map((item, index) => (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, y: 18 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, delay: index * 0.03 }}
-                  >
-                    <Card className="group h-full overflow-hidden text-white backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.07]">
-                      <div className="relative h-52 overflow-hidden border-b border-white/10 bg-slate-900">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.title}
-                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                            style={{
-                              objectPosition: `${typeof item.imagePositionX === "number" ? item.imagePositionX : 50}% ${typeof item.imagePositionY === "number" ? item.imagePositionY : 50}%`,
-                            }}
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]">
-                            <div className="rounded-2xl bg-white/10 p-4">
-                              <ImageIcon className="h-8 w-8 text-slate-400" />
-                            </div>
-                          </div>
-                        )}
-                        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-slate-950/70 to-transparent" />
-                      </div>
-
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <CardTitle className="line-clamp-2 text-xl tracking-tight">{item.title}</CardTitle>
-                          <div className="flex items-center gap-1 opacity-70 transition group-hover:opacity-100">
-                            <button
-                              onClick={() => startEdit(item)}
-                              className="rounded-xl border border-white/10 bg-white/5 p-2 hover:bg-white/10"
-                              aria-label="Upraviť"
-                              type="button"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteItem(item.id)}
-                              className="rounded-xl border border-white/10 bg-white/5 p-2 hover:bg-white/10"
-                              aria-label="Vymazať"
-                              type="button"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        {item.description ? <p className="line-clamp-2 text-sm text-slate-400">{item.description}</p> : null}
-                      </CardHeader>
-
-                      <CardContent className="space-y-4">
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                          <p className="line-clamp-6 whitespace-pre-wrap text-sm leading-6 text-slate-200">{item.content || "Bez obsahu"}</p>
-                          <div className="mt-3 flex items-center gap-3">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCopyPrompt(item.id, item.content || "");
-                              }}
-                              className={cn(
-                                "inline-flex h-10 w-10 items-center justify-center rounded-xl transition",
-                                copiedItemId === item.id ? "bg-emerald-500 text-white" : "bg-white text-slate-950 hover:bg-slate-200"
-                              )}
-                              aria-label="Kopírovať prompt"
-                              type="button"
-                            >
-                              {copiedItemId === item.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                            </button>
-                            {copiedItemId === item.id ? <span className="text-xs text-emerald-400">Skopírované</span> : null}
-                          </div>
-                        </div>
-
-                        {item.link ? (
-                          <a
-                            href={normalizeUrl(item.link)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex w-full items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-slate-200 transition hover:bg-white/10 cursor-pointer"
-                            aria-label={`Otvoriť link ${item.link}`}
-                          >
-                            <LinkIcon className="h-4 w-4 shrink-0" />
-                            <span className="line-clamp-1 underline">{normalizeUrl(item.link)}</span>
-                            <ExternalLink className="ml-auto h-4 w-4 shrink-0 opacity-70" />
-                          </a>
-                        ) : null}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </motion.div>
-        </main>
-      </div>
-    </div>
-  );
-}
-
-export const __testables__ = {
-  STORAGE_KEY,
-  ACTIVE_SECTION_KEY,
-  AUTH_KEY,
-  APP_PASSWORD,
-  starterData,
-  isValidSectionsData,
-  loadSections,
-  loadActiveSectionId,
-  createId,
-  createEmptyItem,
-  getIcon,
-  normalizeUrl,
-  fallbackCopyWithTextarea,
-  copyTextToClipboard,
-  cn,
-};
+   
