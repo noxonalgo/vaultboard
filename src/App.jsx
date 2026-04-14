@@ -14,9 +14,7 @@ import {
   Pencil,
   Copy,
   Check,
-  Move,
   ExternalLink,
-  AlertCircle,
   Download,
   Upload,
   Database,
@@ -42,40 +40,14 @@ const starterData = [
     name: "Prompty",
     icon: "sparkles",
     description: "Miesto pre promptové nápady, inšpirácie a vizuálne referencie.",
-    items: [
-      {
-        id: "p1",
-        title: "Editorial fashion prompt",
-        description: "Silný vizuálny prompt pre moderný fashion editoriál s dramatickým svetlom.",
-        content:
-          "A vibrant high-fashion editorial portrait with bold studio lighting, luxury magazine aesthetic, dramatic composition, ultra-detailed skin texture, premium studio photography.",
-        link: "https://example.com/editorial-prompt",
-        image:
-          "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1200&q=80",
-        imagePositionX: 50,
-        imagePositionY: 50,
-      },
-    ],
+    items: [],
   },
   {
     id: "biznis",
     name: "Biznis",
     icon: "briefcase",
     description: "Nápady, články, zdroje a podklady pre biznis a projekty.",
-    items: [
-      {
-        id: "b1",
-        title: "Landing page inšpirácia",
-        description: "Príklad modernej landing page s čistým UX a výrazným CTA.",
-        content:
-          "Pozrieť layout hero sekcie, grid benefitov, social proof a sekciu FAQ. Vhodné ako inšpirácia pre firemný web.",
-        link: "https://example.com/business-inspiration",
-        image:
-          "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1200&q=80",
-        imagePositionX: 50,
-        imagePositionY: 50,
-      },
-    ],
+    items: [],
   },
 ];
 
@@ -83,11 +55,62 @@ function cn(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
+function createId(prefix = "id") {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getIcon(iconName) {
+  switch (iconName) {
+    case "briefcase":
+      return Briefcase;
+    case "sparkles":
+    default:
+      return Sparkles;
+  }
+}
+
+function createEmptyItem() {
+  return {
+    title: "",
+    description: "",
+    content: "",
+    link: "",
+    image: "",
+    imagePositionX: 50,
+    imagePositionY: 50,
+  };
+}
+
+function normalizeUrl(url) {
+  const trimmed = String(url || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+function isValidSectionsData(value) {
+  if (!Array.isArray(value)) return false;
+
+  return value.every((section) => {
+    if (!section || typeof section !== "object") return false;
+    if (typeof section.id !== "string") return false;
+    if (typeof section.name !== "string") return false;
+    if (!Array.isArray(section.items)) return false;
+
+    return section.items.every((item) => {
+      if (!item || typeof item !== "object") return false;
+      if (typeof item.id !== "string") return false;
+      return true;
+    });
+  });
+}
+
 function AppButton({ className = "", variant = "default", type = "button", children, ...props }) {
   const variants = {
     default: "bg-white text-slate-950 hover:bg-slate-200",
     outline: "border border-white/10 bg-white/5 text-white hover:bg-white/10",
     ghost: "bg-transparent text-white hover:bg-white/10",
+    danger: "border border-red-400/20 bg-red-400/10 text-red-200 hover:bg-red-400/20",
   };
 
   return (
@@ -148,12 +171,7 @@ function CardTitle({ className = "", children }) {
 
 function Badge({ className = "", children }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium text-slate-200",
-        className
-      )}
-    >
+    <span className={cn("inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium text-slate-200", className)}>
       {children}
     </span>
   );
@@ -188,67 +206,6 @@ function Modal({ open, onClose, title, children, maxWidth = "max-w-2xl" }) {
   );
 }
 
-function ScrollArea({ className = "", children }) {
-  return <div className={cn("overflow-y-auto", className)}>{children}</div>;
-}
-
-function getIcon(iconName) {
-  switch (iconName) {
-    case "briefcase":
-      return Briefcase;
-    case "sparkles":
-    default:
-      return Sparkles;
-  }
-}
-
-function createId(prefix = "id") {
-  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function isValidSectionsData(value) {
-  if (!Array.isArray(value)) return false;
-
-  return value.every((section) => {
-    if (!section || typeof section !== "object") return false;
-    if (typeof section.id !== "string") return false;
-    if (typeof section.name !== "string") return false;
-    if (!Array.isArray(section.items)) return false;
-
-    return section.items.every((item) => {
-      if (!item || typeof item !== "object") return false;
-      return typeof item.id === "string";
-    });
-  });
-}
-
-function loadSections() {
-  return starterData;
-}
-
-function loadActiveSectionId(fallbackSections) {
-  return fallbackSections[0]?.id || "prompty";
-}
-
-function createEmptyItem() {
-  return {
-    title: "",
-    description: "",
-    content: "",
-    link: "",
-    image: "",
-    imagePositionX: 50,
-    imagePositionY: 50,
-  };
-}
-
-function normalizeUrl(url) {
-  const trimmed = String(url || "").trim();
-  if (!trimmed) return "";
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}
-
 function fallbackCopyWithTextarea(text) {
   if (typeof document === "undefined") return false;
 
@@ -259,12 +216,9 @@ function fallbackCopyWithTextarea(text) {
   textarea.style.top = "0";
   textarea.style.left = "0";
   textarea.style.opacity = "0";
-  textarea.style.pointerEvents = "none";
-
   document.body.appendChild(textarea);
   textarea.focus();
   textarea.select();
-  textarea.setSelectionRange(0, textarea.value.length);
 
   let success = false;
   try {
@@ -280,12 +234,8 @@ function fallbackCopyWithTextarea(text) {
 async function copyTextToClipboard(text) {
   const value = String(text || "");
   const fallbackSuccess = fallbackCopyWithTextarea(value);
-
-  if (fallbackSuccess) {
-    return { success: true, method: "execCommand" };
-  }
-
-  return { success: false, method: "manual" };
+  if (fallbackSuccess) return { success: true };
+  return { success: false };
 }
 
 async function fetchRemoteState() {
@@ -297,18 +247,6 @@ async function fetchRemoteState() {
 
   if (error) throw error;
   return data;
-}
-
-async function createRemoteStateFromLocal(sections, activeSectionId) {
-  const payload = {
-    id: SUPABASE_STATE_ROW_ID,
-    sections,
-    active_section_id: activeSectionId,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { error } = await supabase.from(SUPABASE_STATE_TABLE).upsert(payload, { onConflict: "id" });
-  if (error) throw error;
 }
 
 async function saveRemoteState(sections, activeSectionId) {
@@ -343,16 +281,14 @@ function SyncStatusBadge({ status, message }) {
 }
 
 export default function App() {
-  const initialSections = loadSections();
-
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(AUTH_KEY) === "true";
   });
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [sections, setSections] = useState(initialSections);
-  const [activeSectionId, setActiveSectionId] = useState(() => loadActiveSectionId(initialSections));
+  const [sections, setSections] = useState(starterData);
+  const [activeSectionId, setActiveSectionId] = useState(starterData[0]?.id || "prompty");
   const [search, setSearch] = useState("");
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
@@ -364,7 +300,7 @@ export default function App() {
   const [importError, setImportError] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
   const [newSection, setNewSection] = useState({ name: "", description: "" });
-  const [newItem, setNewItem] = useState(createEmptyItem);
+  const [newItem, setNewItem] = useState(createEmptyItem());
   const [syncStatus, setSyncStatus] = useState("idle");
   const [syncMessage, setSyncMessage] = useState("");
   const [remoteReady, setRemoteReady] = useState(false);
@@ -399,8 +335,7 @@ export default function App() {
 
   useEffect(() => {
     if (!sections.length) return;
-    const sectionExists = sections.some((section) => section.id === activeSectionId);
-    if (!sectionExists) {
+    if (!sections.some((section) => section.id === activeSectionId)) {
       setActiveSectionId(sections[0].id);
     }
   }, [sections, activeSectionId]);
@@ -413,7 +348,6 @@ export default function App() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-
     let isCancelled = false;
 
     async function loadFromSupabase() {
@@ -422,11 +356,10 @@ export default function App() {
 
       try {
         const remote = await fetchRemoteState();
-
         if (isCancelled) return;
 
         if (!remote) {
-          await createRemoteStateFromLocal(starterData, starterData[0]?.id || "prompty");
+          await saveRemoteState(starterData, starterData[0]?.id || "prompty");
           if (isCancelled) return;
           setSections(starterData);
           setActiveSectionId(starterData[0]?.id || "prompty");
@@ -449,15 +382,12 @@ export default function App() {
         setSyncStatus("idle");
       } catch (error) {
         if (isCancelled) return;
-        const message = error?.message || "Nepodarilo sa načítať dáta zo Supabase.";
         setSyncStatus("error");
-        setSyncMessage(message);
-        setRemoteReady(false);
+        setSyncMessage(error?.message || "Nepodarilo sa načítať dáta zo Supabase.");
       }
     }
 
     loadFromSupabase();
-
     return () => {
       isCancelled = true;
     };
@@ -469,9 +399,7 @@ export default function App() {
     const nextSerializedState = JSON.stringify({ sections, activeSectionId });
     if (lastSavedStateRef.current === nextSerializedState) return;
 
-    if (saveTimeoutRef.current) {
-      window.clearTimeout(saveTimeoutRef.current);
-    }
+    if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
 
     setSyncStatus("saving");
     setSyncMessage("");
@@ -482,16 +410,13 @@ export default function App() {
         lastSavedStateRef.current = nextSerializedState;
         setSyncStatus("idle");
       } catch (error) {
-        const message = error?.message || "Nepodarilo sa uložiť dáta do Supabase.";
         setSyncStatus("error");
-        setSyncMessage(message);
+        setSyncMessage(error?.message || "Nepodarilo sa uložiť dáta do Supabase.");
       }
     }, 700);
 
     return () => {
-      if (saveTimeoutRef.current) {
-        window.clearTimeout(saveTimeoutRef.current);
-      }
+      if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
     };
   }, [sections, activeSectionId, isAuthenticated, remoteReady]);
 
@@ -536,8 +461,8 @@ export default function App() {
   }
 
   function resetItemForm() {
-    setNewItem(createEmptyItem());
     setEditingItem(null);
+    setNewItem(createEmptyItem());
   }
 
   function handleImageUpload(event) {
@@ -704,9 +629,7 @@ export default function App() {
         setImportSuccess("");
         setImportExportOpen(true);
       } finally {
-        if (event.target) {
-          event.target.value = "";
-        }
+        if (event.target) event.target.value = "";
       }
     };
 
@@ -718,7 +641,6 @@ export default function App() {
     setActiveSectionId(starterData[0]?.id || "prompty");
     setSearch("");
     resetItemForm();
-
   }
 
   const ActiveIcon = getIcon(activeSection?.icon);
@@ -779,24 +701,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.18),transparent_22%),radial-gradient(circle_at_top_left,rgba(16,185,129,0.10),transparent_20%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.16),transparent_25%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.14),transparent_25%)]" />
 
       <Modal open={manualCopyOpen} onClose={() => setManualCopyOpen(false)} title="Skopíruj prompt manuálne" maxWidth="max-w-xl">
-        <div className="space-y-4 pt-2">
-          <div className="flex items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-400/10 p-4 text-sm text-amber-100">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>
-              Toto preview blokuje automatické kopírovanie. Text je označený nižšie — stačí ho skopírovať ručne cez <strong>Ctrl+C</strong>.
-            </p>
-          </div>
-
-          <AppTextarea ref={manualCopyTextareaRef} value={manualCopyValue} readOnly className="min-h-[220px]" />
-
-          <div className="flex justify-end gap-3">
-            <AppButton variant="outline" onClick={() => setManualCopyOpen(false)}>
-              Zavrieť
-            </AppButton>
-          </div>
+        <div className="space-y-4">
+          <p className="text-sm text-slate-300">Automatické kopírovanie zlyhalo. Označ text a skopíruj ho ručne.</p>
+          <AppTextarea ref={manualCopyTextareaRef} value={manualCopyValue} readOnly rows={8} />
         </div>
       </Modal>
 
@@ -819,277 +729,150 @@ export default function App() {
 
           <input ref={importFileRef} type="file" accept="application/json" onChange={handleImportFile} className="hidden" />
 
-          {importSuccess ? (
-            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-              {importSuccess}
-            </div>
-          ) : null}
-
-          {importError ? (
-            <div className="rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">
-              {importError}
-            </div>
-          ) : null}
+          {importSuccess ? <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{importSuccess}</div> : null}
+          {importError ? <div className="rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-200">{importError}</div> : null}
         </div>
       </Modal>
 
       <Modal open={sectionDialogOpen} onClose={() => setSectionDialogOpen(false)} title="Vytvoriť novú sekciu" maxWidth="max-w-lg">
-        <div className="space-y-4 pt-2">
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">Názov sekcie</label>
-            <AppInput
-              value={newSection.name}
-              onChange={(e) => setNewSection((prev) => ({ ...prev, name: e.target.value }))}
-              placeholder="Napr. Biznis, Inšpirácie, Weby..."
-            />
+        <div className="space-y-4">
+          <AppInput placeholder="Názov sekcie" value={newSection.name} onChange={(e) => setNewSection((prev) => ({ ...prev, name: e.target.value }))} />
+          <AppTextarea placeholder="Krátky popis sekcie" rows={4} value={newSection.description} onChange={(e) => setNewSection((prev) => ({ ...prev, description: e.target.value }))} />
+          <div className="flex justify-end gap-3">
+            <AppButton variant="ghost" onClick={() => setSectionDialogOpen(false)}>Zrušiť</AppButton>
+            <AppButton onClick={handleCreateSection}>Vytvoriť</AppButton>
           </div>
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">Krátky popis</label>
-            <AppTextarea
-              value={newSection.description}
-              onChange={(e) => setNewSection((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="O čom bude táto sekcia?"
-              className="min-h-[110px]"
-            />
-          </div>
-          <AppButton onClick={handleCreateSection} className="w-full rounded-xl">
-            Vytvoriť sekciu
-          </AppButton>
         </div>
       </Modal>
 
-      <Modal
-        open={itemDialogOpen}
-        onClose={() => {
-          setItemDialogOpen(false);
-          resetItemForm();
-        }}
-        title={editingItem ? "Upraviť položku" : "Pridať novú položku"}
-        maxWidth="max-w-2xl"
-      >
-        <div className="grid gap-4 pt-2">
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">Názov</label>
-            <AppInput
-              value={newItem.title}
-              onChange={(e) => setNewItem((prev) => ({ ...prev, title: e.target.value }))}
-              placeholder="Napr. Prompt pre banner, článok, biznis nápad..."
-            />
+      <Modal open={itemDialogOpen} onClose={() => { setItemDialogOpen(false); resetItemForm(); }} title={editingItem ? "Upraviť položku" : "Pridať položku"} maxWidth="max-w-3xl">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-4 md:col-span-2">
+            <AppInput placeholder="Názov" value={newItem.title} onChange={(e) => setNewItem((prev) => ({ ...prev, title: e.target.value }))} />
+            <AppInput placeholder="Krátky popis" value={newItem.description} onChange={(e) => setNewItem((prev) => ({ ...prev, description: e.target.value }))} />
+            <AppTextarea placeholder="Obsah / prompt" rows={8} value={newItem.content} onChange={(e) => setNewItem((prev) => ({ ...prev, content: e.target.value }))} />
+            <AppInput placeholder="Link" value={newItem.link} onChange={(e) => setNewItem((prev) => ({ ...prev, link: e.target.value }))} />
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">Krátky popis</label>
-            <AppTextarea
-              value={newItem.description}
-              onChange={(e) => setNewItem((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="Stručné vysvetlenie, na čo sa položka hodí"
-              className="min-h-[90px]"
-            />
-          </div>
+          <div className="space-y-4 md:col-span-2">
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm text-slate-300 transition hover:bg-white/10">
+              <ImageIcon className="h-4 w-4" />
+              Nahrať obrázok
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            </label>
 
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">Obsah / prompt / poznámka</label>
-            <AppTextarea
-              value={newItem.content}
-              onChange={(e) => setNewItem((prev) => ({ ...prev, content: e.target.value }))}
-              placeholder="Sem vlož prompt, text, poznámku alebo dôležitý obsah"
-              className="min-h-[160px]"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-slate-300">Link</label>
-            <AppInput
-              value={newItem.link}
-              onChange={(e) => setNewItem((prev) => ({ ...prev, link: e.target.value }))}
-              placeholder="https://..."
-            />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Obrázok cez URL</label>
-              <AppInput
-                value={newItem.image.startsWith("data:") ? "" : newItem.image}
-                onChange={(e) => setNewItem((prev) => ({ ...prev, image: e.target.value }))}
-                placeholder="https://obrazok.jpg"
-              />
-            </div>
-            <div>
-              <label className="mb-2 block text-sm text-slate-300">Alebo nahraj obrázok</label>
-              <AppInput
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-slate-950"
-              />
-            </div>
-          </div>
-
-          {newItem.image ? (
-            <div className="space-y-3">
-              <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-                <div className="relative h-52 w-full overflow-hidden bg-slate-900">
-                  <img
-                    src={newItem.image}
-                    alt="Preview"
-                    className="h-full w-full object-cover"
-                    style={{ objectPosition: `${newItem.imagePositionX}% ${newItem.imagePositionY}%` }}
-                  />
-                  <div className="pointer-events-none absolute inset-0 border border-dashed border-white/30" />
-                  <div className="pointer-events-none absolute inset-1 rounded-[14px] border border-dashed border-white/20" />
+            {newItem.image ? (
+              <div className="space-y-4 rounded-[24px] border border-white/10 bg-white/5 p-4">
+                <div className="overflow-hidden rounded-[20px] border border-white/10 bg-slate-900">
+                  <div className="h-56 w-full overflow-hidden">
+                    <img
+                      src={newItem.image}
+                      alt="Preview"
+                      className="h-full w-full object-cover"
+                      style={{ objectPosition: `${newItem.imagePositionX}% ${newItem.imagePositionY}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <div className="mb-2 text-sm text-slate-300">Horizontálne zarovnanie</div>
+                    <input type="range" min="0" max="100" value={newItem.imagePositionX} onChange={(e) => setNewItem((prev) => ({ ...prev, imagePositionX: Number(e.target.value) }))} className="w-full" />
+                  </div>
+                  <div>
+                    <div className="mb-2 text-sm text-slate-300">Vertikálne zarovnanie</div>
+                    <input type="range" min="0" max="100" value={newItem.imagePositionY} onChange={(e) => setNewItem((prev) => ({ ...prev, imagePositionY: Number(e.target.value) }))} className="w-full" />
+                  </div>
                 </div>
               </div>
+            ) : null}
+          </div>
+        </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <div className="mb-2 flex items-center gap-2 text-sm text-slate-300">
-                    <Move className="h-4 w-4" />
-                    Horizontálne zarovnanie
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={newItem.imagePositionX}
-                    onChange={(e) => setNewItem((prev) => ({ ...prev, imagePositionX: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <div className="mt-1 text-xs text-slate-500">{newItem.imagePositionX}%</div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center gap-2 text-sm text-slate-300">
-                    <Move className="h-4 w-4" />
-                    Vertikálne zarovnanie
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={newItem.imagePositionY}
-                    onChange={(e) => setNewItem((prev) => ({ ...prev, imagePositionY: Number(e.target.value) }))}
-                    className="w-full"
-                  />
-                  <div className="mt-1 text-xs text-slate-500">{newItem.imagePositionY}%</div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <AppButton onClick={handleSaveItem} className="mt-2 w-full rounded-2xl">
-            {editingItem ? "Uložiť zmeny" : "Pridať položku"}
-          </AppButton>
+        <div className="mt-6 flex justify-end gap-3">
+          <AppButton variant="ghost" onClick={() => { setItemDialogOpen(false); resetItemForm(); }}>Zrušiť</AppButton>
+          <AppButton onClick={handleSaveItem}>{editingItem ? "Uložiť zmeny" : "Pridať položku"}</AppButton>
         </div>
       </Modal>
 
-      <div className="relative grid min-h-screen lg:grid-cols-[290px_1fr]">
-        <aside className="border-r border-white/10 bg-white/5 backdrop-blur-xl">
-          <div className="p-5">
-            <div className="mb-6 flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
-                <LayoutGrid className="h-6 w-6" />
-              </div>
-              <div>
-                <div className="text-lg font-semibold tracking-tight">VaultBoard</div>
-                <div className="text-sm text-slate-400">Moderný organizér nápadov</div>
-              </div>
+      <div className="relative mx-auto flex min-h-screen max-w-[1600px] gap-0">
+        <aside className="w-full max-w-[290px] border-r border-white/10 bg-slate-950/70 p-5 backdrop-blur-xl">
+          <div className="mb-6 flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+              <LayoutGrid className="h-7 w-7" />
             </div>
-
-            <Card className="text-white shadow-2xl shadow-black/20">
-              <CardContent className="p-4">
-                <div className="text-sm text-slate-400">Spolu položiek</div>
-                <div className="mt-1 text-3xl font-semibold">{totalItems}</div>
-                <div className="mt-3 text-xs text-slate-400">Dáta sa ukladajú iba do Supabase cloudu. Táto verzia už nepoužíva localStorage pre obsah databázy.</div>
-              </CardContent>
-            </Card>
-
-            <div className="mt-4 flex items-center justify-between gap-2">
-              <SyncStatusBadge status={syncStatus} message={syncMessage} />
+            <div>
+              <div className="text-2xl font-semibold tracking-tight">VaultBoard</div>
+              <div className="text-sm text-slate-400">Moderný organizér nápadov</div>
             </div>
+          </div>
 
-            <div className="mt-6 flex items-center justify-between">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Sekcie</div>
-              <AppButton onClick={() => setSectionDialogOpen(true)} className="rounded-xl px-3 py-2 text-sm">
-                <FolderPlus className="h-4 w-4" />
-                Nová
-              </AppButton>
-            </div>
+          <Card className="mb-5 p-5">
+            <div className="text-sm text-slate-400">Spolu položiek</div>
+            <div className="mt-2 text-5xl font-semibold tracking-tight">{totalItems}</div>
+            <div className="mt-3 text-xs text-slate-400">Dáta sa ukladajú iba do Supabase cloudu. Táto verzia už nepoužíva localStorage pre obsah databázy.</div>
+          </Card>
 
-            <ScrollArea className="mt-4 h-[calc(100vh-320px)] pr-1">
-              <div className="space-y-2">
-                {sections.map((section) => {
-                  const Icon = getIcon(section.icon);
-                  const active = section.id === activeSectionId;
-                  return (
-                    <button
-                      key={section.id}
-                      onClick={() => setActiveSectionId(section.id)}
-                      className={cn(
-                        "w-full rounded-2xl border p-3 text-left transition",
-                        active
-                          ? "border-white/20 bg-white text-slate-950 shadow-xl"
-                          : "border-white/10 bg-white/5 text-white hover:bg-white/10"
-                      )}
-                      type="button"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className={cn("rounded-xl p-2", active ? "bg-slate-100" : "bg-white/10")}>
-                            <Icon className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="font-medium">{section.name}</div>
-                            <div className={cn("text-xs", active ? "text-slate-600" : "text-slate-400")}>
-                              {section.items.length} položiek
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+          <div className="mb-4 flex items-center justify-between">
+            <div className="text-xs uppercase tracking-[0.22em] text-slate-500">Sekcie</div>
+            <AppButton variant="outline" className="h-10 rounded-2xl px-3" onClick={() => setSectionDialogOpen(true)}>
+              <FolderPlus className="h-4 w-4" />
+              Nová
+            </AppButton>
+          </div>
+
+          <div className="space-y-3">
+            {sections.map((section) => {
+              const SectionIcon = getIcon(section.icon);
+              const isActive = section.id === activeSectionId;
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveSectionId(section.id)}
+                  className={cn(
+                    "w-full rounded-[24px] border px-4 py-4 text-left transition",
+                    isActive ? "border-white/20 bg-white text-slate-950" : "border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", isActive ? "bg-slate-100 text-slate-900" : "bg-white/10 text-white") }>
+                      <SectionIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="font-medium">{section.name}</div>
+                      <div className={cn("text-sm", isActive ? "text-slate-600" : "text-slate-400")}>{section.items.length} položiek</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </aside>
 
-        <main className="p-4 md:p-6 lg:p-8">
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35 }}
-            className="mx-auto max-w-7xl"
-          >
-            <div className="mb-6 flex flex-col gap-4 rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-4">
-                <div className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                  <ActiveIcon className="h-6 w-6" />
+        <main className="flex-1 p-6 md:p-8">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+            <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 flex-1 items-center gap-4 rounded-[32px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+                <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10 ring-1 ring-white/15">
+                  {activeSection ? <ActiveIcon className="h-8 w-8" /> : <Sparkles className="h-8 w-8" />}
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{activeSection?.name}</h1>
-                    <Badge>{activeSection?.items.length || 0} položiek</Badge>
+                    <h1 className="truncate text-4xl font-semibold tracking-tight">{activeSection?.name || "Sekcia"}</h1>
+                    <Badge>{filteredItems.length} položiek</Badge>
                     <SyncStatusBadge status={syncStatus} message={syncMessage} />
                   </div>
-                  <p className="mt-2 max-w-2xl text-sm text-slate-400 md:text-base">
-                    {activeSection?.description || "Vybuduj si vlastnú knižnicu promptov, odkazov, obrázkov a poznámok v elegantnom rozhraní."}
-                  </p>
+                  <p className="mt-3 max-w-2xl text-lg text-slate-400">{activeSection?.description || ""}</p>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <div className="relative min-w-[240px]">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                  <AppInput
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Hľadať v sekcii..."
-                    className="h-11 pl-10"
-                  />
+              <div className="grid gap-3 sm:grid-cols-2 xl:flex">
+                <div className="relative min-w-[280px] xl:min-w-[340px]">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                  <AppInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Hľadať v sekcii" className="h-12 pl-11" />
                 </div>
 
-                <AppButton onClick={() => setItemDialogOpen(true)} className="h-11 rounded-2xl">
+                <AppButton onClick={() => setItemDialogOpen(true)} className="h-12 rounded-2xl">
                   <Plus className="h-4 w-4" />
                   Pridať položku
                 </AppButton>
@@ -1101,8 +884,93 @@ export default function App() {
                     setImportError("");
                     setImportExportOpen(true);
                   }}
-                  className="h-11 rounded-2xl"
+                  className="h-12 rounded-2xl"
                 >
                   <Database className="h-4 w-4" />
                   Záloha dát
-   
+                </AppButton>
+
+                <AppButton variant="ghost" onClick={handleResetAllData} className="h-12 rounded-2xl">
+                  Reset
+                </AppButton>
+
+                <AppButton variant="ghost" onClick={handleLogout} className="h-12 rounded-2xl">
+                  Odhlásiť
+                </AppButton>
+              </div>
+            </div>
+
+            {filteredItems.length === 0 ? (
+              <Card className="p-10 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10">
+                  <ImageIcon className="h-8 w-8 text-slate-400" />
+                </div>
+                <div className="mt-5 text-xl font-medium">Zatiaľ tu nič nie je</div>
+                <div className="mt-2 text-sm text-slate-400">Pridaj prvú položku a tá sa uloží rovno do Supabase cloudu.</div>
+              </Card>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {filteredItems.map((item) => (
+                  <Card key={item.id} className="overflow-hidden">
+                    {item.image ? (
+                      <div className="h-40 w-full overflow-hidden bg-slate-900">
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="h-full w-full object-cover"
+                          style={{ objectPosition: `${item.imagePositionX}% ${item.imagePositionY}%` }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex h-40 items-center justify-center bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10">
+                          <ImageIcon className="h-8 w-8 text-slate-400" />
+                        </div>
+                      </div>
+                    )}
+
+                    <CardHeader>
+                      <div className="flex items-start justify-between gap-3">
+                        <CardTitle className="text-2xl">{item.title}</CardTitle>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => startEdit(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button type="button" onClick={() => handleDeleteItem(item.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                      {item.description ? <p className="mt-3 text-sm text-slate-400">{item.description}</p> : null}
+                    </CardHeader>
+
+                    <CardContent className="space-y-4 pt-0">
+                      <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+                        {item.content || "Bez obsahu"}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <AppButton variant="outline" onClick={() => handleCopyPrompt(item.id, item.content)}>
+                          {copiedItemId === item.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        </AppButton>
+
+                        {item.link ? (
+                          <a href={normalizeUrl(item.link)} target="_blank" rel="noreferrer">
+                            <AppButton variant="ghost">
+                              <ExternalLink className="h-4 w-4" />
+                              Link
+                            </AppButton>
+                          </a>
+                        ) : null}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        </main>
+      </div>
+    </div>
+  );
+}
