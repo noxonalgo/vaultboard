@@ -460,6 +460,16 @@ export default function App() {
     setSectionDialogOpen(false);
   }
 
+  function handleDeleteSection(sectionId) {
+    setSections((prev) => {
+      const updated = prev.filter((s) => s.id !== sectionId);
+      if (activeSectionId === sectionId && updated.length > 0) {
+        setActiveSectionId(updated[0].id);
+      }
+      return updated;
+    });
+  }
+
   function resetItemForm() {
     setEditingItem(null);
     setNewItem(createEmptyItem());
@@ -825,25 +835,36 @@ export default function App() {
               const SectionIcon = getIcon(section.icon);
               const isActive = section.id === activeSectionId;
               return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => setActiveSectionId(section.id)}
-                  className={cn(
-                    "w-full rounded-[24px] border px-4 py-4 text-left transition",
-                    isActive ? "border-white/20 bg-white text-slate-950" : "border-white/10 bg-white/5 text-white hover:bg-white/10"
+                <div key={section.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSectionId(section.id)}
+                    className={cn(
+                      "w-full rounded-[24px] border px-4 py-4 text-left transition pr-12",
+                      isActive ? "border-white/20 bg-white text-slate-950" : "border-white/10 bg-white/5 text-white hover:bg-white/10"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", isActive ? "bg-slate-100 text-slate-900" : "bg-white/10 text-white")}>
+                        <SectionIcon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="font-medium">{section.name}</div>
+                        <div className={cn("text-sm", isActive ? "text-slate-600" : "text-slate-400")}>{section.items.length} položiek</div>
+                      </div>
+                    </div>
+                  </button>
+                  {sections.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id); }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 inline-flex h-8 w-8 items-center justify-center rounded-xl border border-red-400/20 bg-red-400/10 text-red-300 hover:bg-red-400/20 transition"
+                      title="Odstrániť sekciu"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl", isActive ? "bg-slate-100 text-slate-900" : "bg-white/10 text-white") }>
-                      <SectionIcon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <div className="font-medium">{section.name}</div>
-                      <div className={cn("text-sm", isActive ? "text-slate-600" : "text-slate-400")}>{section.items.length} položiek</div>
-                    </div>
-                  </div>
-                </button>
+                </div>
               );
             })}
           </div>
