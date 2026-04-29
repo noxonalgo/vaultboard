@@ -254,7 +254,7 @@ async function fetchRemoteState() {
   return data;
 }
 
-async function saveRemoteState(sections, activeSectionId) {
+async function saveRemoteState(sections, activeSectionId, attempt = 0) {
   const payload = {
     id: SUPABASE_STATE_ROW_ID,
     sections,
@@ -263,7 +263,14 @@ async function saveRemoteState(sections, activeSectionId) {
   };
 
   const { error } = await supabase.from(SUPABASE_STATE_TABLE).upsert(payload, { onConflict: "id" });
-  if (error) throw error;
+  if (error) {
+    if (attempt < 3) {
+      const delay = Math.pow(2, attempt) * 1000;
+      await new Promise((r) => setTimeout(r, delay));
+      return saveRemoteState(sections, activeSectionId, attempt + 1);
+    }
+    throw error;
+  }
 }
 
 function SyncStatusBadge({ status, message }) {
@@ -446,7 +453,7 @@ export default function App() {
         setSyncStatus("error");
         setSyncMessage(error?.message || "Nepodarilo sa uložiť dáta do Supabase.");
       }
-    }, 700);
+    }, 2500);
 
     return () => {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
