@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, useSortable, arrayMove, rectSortingStrategy, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { createClient } from "@supabase/supabase-js";
 import {
   Plus,
@@ -23,6 +26,7 @@ import {
   CloudOff,
   LoaderCircle,
   LayoutList,
+  GripVertical,
 } from "lucide-react";
 
 const AUTH_KEY = "vaultboard-authenticated";
@@ -281,6 +285,32 @@ function SyncStatusBadge({ status, message }) {
   );
 }
 
+function SortableCard({ id, layoutMode, children }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 20 : "auto",
+    position: "relative",
+  };
+  return (
+    <div ref={setNodeRef} style={style} className={cn("group", layoutMode === "list" ? "w-full" : "")}>
+      <button
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        className="absolute top-2 left-2 z-20 opacity-0 group-hover:opacity-100 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-black/40 text-slate-400 hover:text-white cursor-grab active:cursor-grabbing transition"
+        title="Presunúť"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      {children}
+    </div>
+  );
+}
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -307,6 +337,7 @@ export default function App() {
   const [syncMessage, setSyncMessage] = useState("");
   const [remoteReady, setRemoteReady] = useState(false);
   const manualCopyTextareaRef = useRef(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const importFileRef = useRef(null);
   const lastSavedStateRef = useRef("");
   const saveTimeoutRef = useRef(null);
@@ -470,6 +501,20 @@ export default function App() {
       }
       return updated;
     });
+  }
+
+  function handleDragEnd(event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setSections((prev) =>
+      prev.map((section) => {
+        if (section.id !== activeSectionId) return section;
+        const oldIndex = section.items.findIndex((item) => item.id === active.id);
+        const newIndex = section.items.findIndex((item) => item.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return section;
+        return { ...section, items: arrayMove(section.items, oldIndex, newIndex) };
+      })
+    );
   }
 
   function resetItemForm() {
@@ -941,13 +986,14 @@ export default function App() {
                 <div className="mt-2 text-sm text-slate-400">Pridaj prvú položku a tá sa uloží rovno do Supabase cloudu.</div>
               </Card>
             ) : (
-              <div className={layoutMode === "grid" ? "grid gap-6 md:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-4"}>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={filteredItems.map((i) => i.id)} strategy={layoutMode === "grid" ? rectSortingStrategy : verticalListSortingStrategy}>
+                <div className={layoutMode === "grid" ? "grid gap-6 md:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-4"}>
                 {filteredItems.map((item) => (
+                  <SortableCard key={item.id} id={item.id} layoutMode={layoutMode}>
                   <motion.div
-                    key={item.id}
                     whileHover={{ y: -4, scale: 1.015 }}
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                    className={layoutMode === "list" ? "w-full" : ""}
                   >
                     <Card className={layoutMode === "grid" ? "overflow-hidden flex flex-col h-[420px]" : "overflow-hidden flex flex-row h-[120px]"}>
                       {layoutMode === "grid" ? (
@@ -1048,8 +1094,11 @@ export default function App() {
                       )}
                     </Card>
                   </motion.div>
+                  </SortableCard>
                 ))}
               </div>
+              </SortableContext>
+              </DndContext>
             )}
           </motion.div>
         </main>
