@@ -27,10 +27,22 @@ import {
   LoaderCircle,
   LayoutList,
   GripVertical,
+  Zap,
 } from "lucide-react";
 
 const AUTH_KEY = "vaultboard-authenticated";
 const APP_PASSWORD = "07092024tw";
+
+const QUICK_COLORS = [
+  { id: "purple", bg: "#4f46e5", text: "#eef2ff" },
+  { id: "teal",   bg: "#0f766e", text: "#f0fdfa" },
+  { id: "coral",  bg: "#c2410c", text: "#fff7ed" },
+  { id: "blue",   bg: "#1d4ed8", text: "#eff6ff" },
+  { id: "amber",  bg: "#b45309", text: "#fffbeb" },
+  { id: "pink",   bg: "#be185d", text: "#fdf2f8" },
+  { id: "green",  bg: "#15803d", text: "#f0fdf4" },
+  { id: "gray",   bg: "#475569", text: "#f8fafc" },
+];
 
 const SUPABASE_URL = "https://qdpihvqcslgciwaqylpm.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_1lP2ZUZln2soojnA8pLGEw_Y9Hz9h4V";
@@ -246,7 +258,7 @@ async function copyTextToClipboard(text) {
 async function fetchRemoteState() {
   const { data, error } = await supabase
     .from(SUPABASE_STATE_TABLE)
-    .select("id, sections, active_section_id")
+    .select("id, sections, quick_copy")
     .eq("id", SUPABASE_STATE_ROW_ID)
     .maybeSingle();
 
@@ -267,6 +279,19 @@ async function saveRemoteState(sections, attempt = 0) {
       const delay = Math.pow(2, attempt) * 1000;
       await new Promise((r) => setTimeout(r, delay));
       return saveRemoteState(sections, attempt + 1);
+    }
+    throw error;
+  }
+}
+
+async function saveQuickCopy(buttons, attempt = 0) {
+  const { error } = await supabase
+    .from(SUPABASE_STATE_TABLE)
+    .upsert({ id: SUPABASE_STATE_ROW_ID, quick_copy: buttons, updated_at: new Date().toISOString() }, { onConflict: "id" });
+  if (error) {
+    if (attempt < 3) {
+      await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
+      return saveQuickCopy(buttons, attempt + 1);
     }
     throw error;
   }
@@ -391,6 +416,15 @@ export default function App() {
   const [importSuccess, setImportSuccess] = useState("");
   const [layoutMode, setLayoutMode] = useState("grid");
   const [imageUploading, setImageUploading] = useState(false);
+  const [appMode, setAppMode] = useState("vault");
+  const [quickButtons, setQuickButtons] = useState([]);
+  const [quickDialogOpen, setQuickDialogOpen] = useState(false);
+  const [editingQuickBtn, setEditingQuickBtn] = useState(null);
+  const [newQuickBtn, setNewQuickBtn] = useState({ label: "", content: "", color: "purple", group: "" });
+  const [activeQuickGroup, setActiveQuickGroup] = useState("all");
+  const [copiedQuickId, setCopiedQuickId] = useState(null);
+  const quickSaveTimeoutRef = useRef(null);
+  const lastSavedQuickRef = useRef("");
   const [newSection, setNewSection] = useState({ name: "", description: "" });
   const [newItem, setNewItem] = useState(createEmptyItem());
   const [syncStatus, setSyncStatus] = useState("idle");
@@ -476,6 +510,10 @@ export default function App() {
         setSections(remoteSections);
         setActiveSectionId(remoteActiveSectionId);
         lastSavedStateRef.current = JSON.stringify(remoteSections);
+
+        const remoteQuick = Array.isArray(remote.quick_copy) ? remote.quick_copy : [];
+        setQuickButtons(remoteQuick);
+        lastSavedQuickRef.current = JSON.stringify(remoteQuick);
         setRemoteReady(true);
         setSyncStatus("idle");
       } catch (error) {
@@ -517,6 +555,20 @@ export default function App() {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
     };
   }, [sections, isAuthenticated, remoteReady]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !remoteReady) return;
+    const next = JSON.stringify(quickButtons);
+    if (lastSavedQuickRef.current === next) return;
+    if (quickSaveTimeoutRef.current) window.clearTimeout(quickSaveTimeoutRef.current);
+    quickSaveTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        await saveQuickCopy(quickButtons);
+        lastSavedQuickRef.current = next;
+      } catch (_) {}
+    }, 1500);
+    return () => { if (quickSaveTimeoutRef.current) window.clearTimeout(quickSaveTimeoutRef.current); };
+  }, [quickButtons, isAuthenticated, remoteReady]);
 
   function handleLogin(event) {
     event?.preventDefault?.();
@@ -580,6 +632,35 @@ export default function App() {
         return { ...section, items: arrayMove(section.items, oldIndex, newIndex) };
       })
     );
+  }
+
+  function handleSaveQuickBtn() {
+    if (!newQuickBtn.label.trim()) return;
+    if (editingQuickBtn) {
+      setQuickButtons((prev) => prev.map((b) => b.id === editingQuickBtn.id ? { ...b, ...newQuickBtn, label: newQuickBtn.label.trim(), content: newQuickBtn.content } : b));
+    } else {
+      setQuickButtons((prev) => [...prev, { id: createId("qb"), ...newQuickBtn, label: newQuickBtn.label.trim() }]);
+    }
+    setQuickDialogOpen(false);
+    setEditingQuickBtn(null);
+    setNewQuickBtn({ label: "", content: "", color: "purple", group: "" });
+  }
+
+  function handleDeleteQuickBtn(id) {
+    setQuickButtons((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  function startEditQuickBtn(btn) {
+    setEditingQuickBtn(btn);
+    setNewQuickBtn({ label: btn.label, content: btn.content, color: btn.color, group: btn.group || "" });
+    setQuickDialogOpen(true);
+  }
+
+  async function handleCopyQuickBtn(id, text) {
+    const result = await copyTextToClipboard(text || "");
+    if (!result.success) { setManualCopyValue(text || ""); setManualCopyOpen(true); return; }
+    setCopiedQuickId(id);
+    window.setTimeout(() => setCopiedQuickId((c) => (c === id ? null : c)), 1600);
   }
 
   function resetItemForm() {
@@ -861,6 +942,28 @@ export default function App() {
         </div>
       </Modal>
 
+      <Modal open={quickDialogOpen} onClose={() => { setQuickDialogOpen(false); setEditingQuickBtn(null); setNewQuickBtn({ label: "", content: "", color: "purple", group: "" }); }} title={editingQuickBtn ? "Upraviť tlačidlo" : "Nové QuickCopy tlačidlo"} maxWidth="max-w-lg">
+        <div className="space-y-4">
+          <AppInput placeholder="Názov tlačidla (napr. Zalomenie)" value={newQuickBtn.label} onChange={(e) => setNewQuickBtn((p) => ({ ...p, label: e.target.value }))} />
+          <AppTextarea placeholder="Obsah — text, kód, prompt..." rows={5} value={newQuickBtn.content} onChange={(e) => setNewQuickBtn((p) => ({ ...p, content: e.target.value }))} />
+          <AppInput placeholder="Skupina (napr. Elementor, AI Prompty)" value={newQuickBtn.group} onChange={(e) => setNewQuickBtn((p) => ({ ...p, group: e.target.value }))} />
+          <div>
+            <div className="mb-2 text-sm text-slate-300">Farba</div>
+            <div className="flex flex-wrap gap-2">
+              {QUICK_COLORS.map((c) => (
+                <button key={c.id} type="button" onClick={() => setNewQuickBtn((p) => ({ ...p, color: c.id }))}
+                  className={cn("h-8 w-8 rounded-xl transition", newQuickBtn.color === c.id ? "ring-2 ring-white ring-offset-2 ring-offset-slate-950" : "")}
+                  style={{ backgroundColor: c.bg }} />
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <AppButton variant="ghost" onClick={() => { setQuickDialogOpen(false); setEditingQuickBtn(null); setNewQuickBtn({ label: "", content: "", color: "purple", group: "" }); }}>Zrušiť</AppButton>
+            <AppButton onClick={handleSaveQuickBtn}>{editingQuickBtn ? "Uložiť" : "Vytvoriť"}</AppButton>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={sectionDialogOpen} onClose={() => setSectionDialogOpen(false)} title="Vytvoriť novú sekciu" maxWidth="max-w-lg">
         <div className="space-y-4">
           <AppInput placeholder="Názov sekcie" value={newSection.name} onChange={(e) => setNewSection((prev) => ({ ...prev, name: e.target.value }))} />
@@ -933,6 +1036,15 @@ export default function App() {
             </div>
           </div>
 
+          <div className="mb-5 flex rounded-2xl border border-white/10 bg-white/5 p-1">
+            <button type="button" onClick={() => setAppMode("vault")} className={cn("flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition", appMode === "vault" ? "bg-white text-slate-950" : "text-slate-400 hover:text-white")}>
+              <LayoutGrid className="h-4 w-4" /> Vault
+            </button>
+            <button type="button" onClick={() => setAppMode("quickcopy")} className={cn("flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition", appMode === "quickcopy" ? "bg-white text-slate-950" : "text-slate-400 hover:text-white")}>
+              <Zap className="h-4 w-4" /> QuickCopy
+            </button>
+          </div>
+
           <Card className="mb-5 p-5">
             <div className="text-sm text-slate-400">Spolu položiek</div>
             <div className="mt-2 text-5xl font-semibold tracking-tight">{totalItems}</div>
@@ -989,6 +1101,69 @@ export default function App() {
 
         <main className="flex-1 p-6 md:p-8">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+          {appMode === "quickcopy" ? (() => {
+            const uniqueGroups = [...new Set(quickButtons.map((b) => b.group).filter(Boolean))];
+            const filtered = activeQuickGroup === "all" ? quickButtons : quickButtons.filter((b) => b.group === activeQuickGroup);
+            return (
+              <div>
+                <div className="mb-6 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10 ring-1 ring-white/15">
+                      <Zap className="h-8 w-8" />
+                    </div>
+                    <div>
+                      <h1 className="text-4xl font-semibold tracking-tight">QuickCopy</h1>
+                      <p className="mt-1 text-slate-400">Klikni na tlačidlo → obsah je v schránke</p>
+                    </div>
+                  </div>
+                  <AppButton onClick={() => { setEditingQuickBtn(null); setNewQuickBtn({ label: "", content: "", color: "purple", group: "" }); setQuickDialogOpen(true); }} className="h-12 rounded-2xl">
+                    <Plus className="h-4 w-4" /> Nové tlačidlo
+                  </AppButton>
+                </div>
+                {uniqueGroups.length > 0 && (
+                  <div className="mb-6 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setActiveQuickGroup("all")} className={cn("rounded-full border px-4 py-1.5 text-sm transition", activeQuickGroup === "all" ? "border-white/30 bg-white/10 text-white" : "border-white/10 text-slate-400 hover:text-white")}>Všetky ({quickButtons.length})</button>
+                    {uniqueGroups.map((g) => (
+                      <button key={g} type="button" onClick={() => setActiveQuickGroup(g)} className={cn("rounded-full border px-4 py-1.5 text-sm transition", activeQuickGroup === g ? "border-white/30 bg-white/10 text-white" : "border-white/10 text-slate-400 hover:text-white")}>{g} ({quickButtons.filter((b) => b.group === g).length})</button>
+                    ))}
+                  </div>
+                )}
+                {filtered.length === 0 ? (
+                  <Card className="p-10 text-center">
+                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10"><Zap className="h-8 w-8 text-slate-400" /></div>
+                    <div className="mt-5 text-xl font-medium">Žiadne tlačidlá</div>
+                    <div className="mt-2 text-sm text-slate-400">Vytvor prvé QuickCopy tlačidlo.</div>
+                  </Card>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                    {filtered.map((btn) => {
+                      const colorObj = QUICK_COLORS.find((c) => c.id === btn.color) || QUICK_COLORS[0];
+                      const isCopied = copiedQuickId === btn.id;
+                      return (
+                        <motion.div key={btn.id} whileHover={{ y: -3, scale: 1.02 }} transition={{ type: "spring", stiffness: 300, damping: 20 }} className="group relative">
+                          <button type="button" onClick={() => handleCopyQuickBtn(btn.id, btn.content)}
+                            className="w-full rounded-[24px] p-5 text-left transition"
+                            style={{ backgroundColor: colorObj.bg, color: colorObj.text }}>
+                            <div className="mb-3 flex items-center justify-between">
+                              <span className="text-lg font-semibold">{btn.label}</span>
+                              {isCopied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5 opacity-60" />}
+                            </div>
+                            <div className="text-sm opacity-60 line-clamp-2 break-all">{btn.content || "—"}</div>
+                            {btn.group ? <div className="mt-3 inline-block rounded-full bg-black/20 px-2.5 py-0.5 text-xs">{btn.group}</div> : null}
+                          </button>
+                          <div className="absolute right-2 top-2 hidden gap-1 group-hover:flex">
+                            <button type="button" onClick={(e) => { e.stopPropagation(); startEditQuickBtn(btn); }} className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black/30 text-white hover:bg-black/50"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteQuickBtn(btn.id); }} className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black/30 text-white hover:bg-red-500/60"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })() : (
+            <>
             <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 flex-1 items-center gap-4 rounded-[32px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
                 <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10 ring-1 ring-white/15">
@@ -1170,6 +1345,8 @@ export default function App() {
               </SortableContext>
               </DndContext>
             )}
+            </>
+          )}
           </motion.div>
         </main>
       </div>
