@@ -254,11 +254,10 @@ async function fetchRemoteState() {
   return data;
 }
 
-async function saveRemoteState(sections, activeSectionId, attempt = 0) {
+async function saveRemoteState(sections, attempt = 0) {
   const payload = {
     id: SUPABASE_STATE_ROW_ID,
     sections,
-    active_section_id: activeSectionId,
     updated_at: new Date().toISOString(),
   };
 
@@ -267,7 +266,7 @@ async function saveRemoteState(sections, activeSectionId, attempt = 0) {
     if (attempt < 3) {
       const delay = Math.pow(2, attempt) * 1000;
       await new Promise((r) => setTimeout(r, delay));
-      return saveRemoteState(sections, activeSectionId, attempt + 1);
+      return saveRemoteState(sections, attempt + 1);
     }
     throw error;
   }
@@ -376,7 +375,10 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [sections, setSections] = useState(starterData);
-  const [activeSectionId, setActiveSectionId] = useState(starterData[0]?.id || "prompty");
+  const [activeSectionId, setActiveSectionId] = useState(() => {
+    if (typeof window === "undefined") return starterData[0]?.id || "prompty";
+    return window.localStorage.getItem("vaultboard-active-section") || starterData[0]?.id || "prompty";
+  });
   const [search, setSearch] = useState("");
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
@@ -425,6 +427,11 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("vaultboard-active-section", activeSectionId);
+  }, [activeSectionId]);
+
+  useEffect(() => {
     if (!sections.length) return;
     if (!sections.some((section) => section.id === activeSectionId)) {
       setActiveSectionId(sections[0].id);
@@ -450,25 +457,25 @@ export default function App() {
         if (isCancelled) return;
 
         if (!remote) {
-          await saveRemoteState(starterData, starterData[0]?.id || "prompty");
+          await saveRemoteState(starterData);
           if (isCancelled) return;
           setSections(starterData);
           setActiveSectionId(starterData[0]?.id || "prompty");
-          lastSavedStateRef.current = JSON.stringify({ sections: starterData, activeSectionId: starterData[0]?.id || "prompty" });
+          lastSavedStateRef.current = JSON.stringify(starterData);
           setRemoteReady(true);
           setSyncStatus("idle");
           return;
         }
 
         const remoteSections = isValidSectionsData(remote.sections) ? remote.sections : starterData;
-        const remoteActiveSectionId =
-          remoteSections.some((section) => section.id === remote.active_section_id)
-            ? remote.active_section_id
-            : remoteSections[0]?.id || "prompty";
+        const savedActive = typeof window !== "undefined" ? window.localStorage.getItem("vaultboard-active-section") : null;
+        const remoteActiveSectionId = remoteSections.some((s) => s.id === savedActive)
+          ? savedActive
+          : remoteSections[0]?.id || "prompty";
 
         setSections(remoteSections);
         setActiveSectionId(remoteActiveSectionId);
-        lastSavedStateRef.current = JSON.stringify({ sections: remoteSections, activeSectionId: remoteActiveSectionId });
+        lastSavedStateRef.current = JSON.stringify(remoteSections);
         setRemoteReady(true);
         setSyncStatus("idle");
       } catch (error) {
@@ -485,9 +492,9 @@ export default function App() {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (!isAuthenticated || !remoteReady || !activeSectionId) return;
+    if (!isAuthenticated || !remoteReady) return;
 
-    const nextSerializedState = JSON.stringify({ sections, activeSectionId });
+    const nextSerializedState = JSON.stringify(sections);
     if (lastSavedStateRef.current === nextSerializedState) return;
 
     if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
@@ -497,7 +504,7 @@ export default function App() {
 
     saveTimeoutRef.current = window.setTimeout(async () => {
       try {
-        await saveRemoteState(sections, activeSectionId);
+        await saveRemoteState(sections);
         lastSavedStateRef.current = nextSerializedState;
         setSyncStatus("idle");
       } catch (error) {
@@ -509,7 +516,7 @@ export default function App() {
     return () => {
       if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
     };
-  }, [sections, activeSectionId, isAuthenticated, remoteReady]);
+  }, [sections, isAuthenticated, remoteReady]);
 
   function handleLogin(event) {
     event?.preventDefault?.();
