@@ -292,6 +292,56 @@ function SyncStatusBadge({ status, message }) {
   );
 }
 
+async function compressImage(file, maxSizeKB = 480, maxWidth = 1600) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const tryCompress = (quality) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error("Kompressia zlyhala")); return; }
+            if (blob.size > maxSizeKB * 1024 && quality > 0.25) {
+              tryCompress(Math.round((quality - 0.1) * 10) / 10);
+            } else {
+              resolve(blob);
+            }
+          },
+          "image/webp",
+          quality
+        );
+      };
+      tryCompress(0.85);
+    };
+    img.onerror = () => reject(new Error("Nepodarilo sa načítať obrázok"));
+    img.src = url;
+  });
+}
+
+async function uploadImageToStorage(file) {
+  const compressed = await compressImage(file);
+  const fileName = `${Math.random().toString(36).slice(2, 11)}-${Date.now()}.webp`;
+  const { error } = await supabase.storage
+    .from("vaultboard-images")
+    .upload(fileName, compressed, { contentType: "image/webp", upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from("vaultboard-images").getPublicUrl(fileName);
+  return data.publicUrl;
+}
+
 function SortableCard({ id, layoutMode, children }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
@@ -338,6 +388,7 @@ export default function App() {
   const [importError, setImportError] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
   const [layoutMode, setLayoutMode] = useState("grid");
+  const [imageUploading, setImageUploading] = useState(false);
   const [newSection, setNewSection] = useState({ name: "", description: "" });
   const [newItem, setNewItem] = useState(createEmptyItem());
   const [syncStatus, setSyncStatus] = useState("idle");
@@ -529,15 +580,20 @@ export default function App() {
     setNewItem(createEmptyItem());
   }
 
-  function handleImageUpload(event) {
+  async function handleImageUpload(event) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (event.target) event.target.value = "";
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setNewItem((prev) => ({ ...prev, image: String(reader.result) }));
-    };
-    reader.readAsDataURL(file);
+    setImageUploading(true);
+    try {
+      const url = await uploadImageToStorage(file);
+      setNewItem((prev) => ({ ...prev, image: url }));
+    } catch (err) {
+      alert("Upload zlyhal: " + (err?.message || "Neznáma chyba"));
+    } finally {
+      setImageUploading(false);
+    }
   }
 
   function handleSaveItem() {
@@ -819,10 +875,10 @@ export default function App() {
           </div>
 
           <div className="space-y-4 md:col-span-2">
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm text-slate-300 transition hover:bg-white/10">
-              <ImageIcon className="h-4 w-4" />
-              Nahrať obrázok
-              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            <label className={cn("flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-6 text-sm text-slate-300 transition hover:bg-white/10", imageUploading && "opacity-60 pointer-events-none")}>
+              {imageUploading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+              {imageUploading ? "Nahrávam a komprimujem..." : "Nahrať obrázok (auto-kompresia)"}
+              <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={imageUploading} />
             </label>
 
             {newItem.image ? (
