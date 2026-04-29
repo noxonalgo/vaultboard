@@ -22,6 +22,7 @@ import {
   Cloud,
   CloudOff,
   LoaderCircle,
+  LayoutList,
 } from "lucide-react";
 
 const AUTH_KEY = "vaultboard-authenticated";
@@ -299,6 +300,7 @@ export default function App() {
   const [importExportOpen, setImportExportOpen] = useState(false);
   const [importError, setImportError] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
+  const [layoutMode, setLayoutMode] = useState("grid");
   const [newSection, setNewSection] = useState({ name: "", description: "" });
   const [newItem, setNewItem] = useState(createEmptyItem());
   const [syncStatus, setSyncStatus] = useState("idle");
@@ -900,6 +902,15 @@ export default function App() {
 
                 <AppButton
                   variant="outline"
+                  onClick={() => setLayoutMode((m) => m === "grid" ? "list" : "grid")}
+                  className="h-12 rounded-2xl"
+                  title={layoutMode === "grid" ? "Prepnúť na riadky" : "Prepnúť na mriežku"}
+                >
+                  {layoutMode === "grid" ? <LayoutList className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+                </AppButton>
+
+                <AppButton
+                  variant="outline"
                   onClick={() => {
                     setImportSuccess("");
                     setImportError("");
@@ -930,62 +941,113 @@ export default function App() {
                 <div className="mt-2 text-sm text-slate-400">Pridaj prvú položku a tá sa uloží rovno do Supabase cloudu.</div>
               </Card>
             ) : (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              <div className={layoutMode === "grid" ? "grid gap-6 md:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-4"}>
                 {filteredItems.map((item) => (
-                  <Card key={item.id} className="overflow-hidden">
-                    {item.image ? (
-                      <div className="h-40 w-full overflow-hidden bg-slate-900">
-                        <img
-                          src={item.image}
-                          alt={item.title}
-                          className="h-full w-full object-cover"
-                          style={{ objectPosition: `${item.imagePositionX}% ${item.imagePositionY}%` }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex h-40 items-center justify-center bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/10">
-                          <ImageIcon className="h-8 w-8 text-slate-400" />
-                        </div>
-                      </div>
-                    )}
-
-                    <CardHeader>
-                      <div className="flex items-start justify-between gap-3">
-                        <CardTitle className="text-2xl">{item.title}</CardTitle>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => startEdit(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button type="button" onClick={() => handleDeleteItem(item.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                      {item.description ? <p className="mt-3 text-sm text-slate-400">{item.description}</p> : null}
-                    </CardHeader>
-
-                    <CardContent className="space-y-4 pt-0">
-                      <div className="rounded-[22px] border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-                        {item.content || "Bez obsahu"}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <AppButton variant="outline" onClick={() => handleCopyPrompt(item.id, item.content)}>
-                          {copiedItemId === item.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                        </AppButton>
-
-                        {item.link ? (
-                          <a href={normalizeUrl(item.link)} target="_blank" rel="noreferrer">
-                            <AppButton variant="ghost">
-                              <ExternalLink className="h-4 w-4" />
-                              Link
-                            </AppButton>
-                          </a>
-                        ) : null}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <motion.div
+                    key={item.id}
+                    whileHover={{ y: -4, scale: 1.015 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    className={layoutMode === "list" ? "w-full" : ""}
+                  >
+                    <Card className={layoutMode === "grid" ? "overflow-hidden flex flex-col h-[420px]" : "overflow-hidden flex flex-row h-[120px]"}>
+                      {layoutMode === "grid" ? (
+                        <>
+                          {item.image ? (
+                            <div className="h-36 w-full overflow-hidden bg-slate-900 flex-shrink-0">
+                              <img
+                                src={item.image}
+                                alt={item.title}
+                                className="h-full w-full object-cover"
+                                style={{ objectPosition: `${item.imagePositionX}% ${item.imagePositionY}%` }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex h-36 items-center justify-center bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))] flex-shrink-0">
+                              <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-white/10">
+                                <ImageIcon className="h-7 w-7 text-slate-400" />
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex flex-col flex-1 overflow-hidden">
+                            <CardHeader className="pb-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <CardTitle className="text-xl line-clamp-1">{item.title}</CardTitle>
+                                <div className="flex gap-2 flex-shrink-0">
+                                  <button type="button" onClick={() => startEdit(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onClick={() => handleDeleteItem(item.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                              {item.description ? <p className="mt-1 text-sm text-slate-400 line-clamp-1">{item.description}</p> : null}
+                            </CardHeader>
+                            <CardContent className="pt-0 flex-1 overflow-hidden flex flex-col gap-3">
+                              <div className="rounded-[18px] border border-white/10 bg-black/20 p-3 text-sm text-slate-300 line-clamp-3 overflow-hidden">
+                                {item.content || "Bez obsahu"}
+                              </div>
+                              <div className="flex flex-wrap gap-2 mt-auto">
+                                <AppButton variant="outline" onClick={() => handleCopyPrompt(item.id, item.content)}>
+                                  {copiedItemId === item.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                </AppButton>
+                                {item.link ? (
+                                  <a href={normalizeUrl(item.link)} target="_blank" rel="noreferrer">
+                                    <AppButton variant="ghost">
+                                      <ExternalLink className="h-4 w-4" />
+                                      Link
+                                    </AppButton>
+                                  </a>
+                                ) : null}
+                              </div>
+                            </CardContent>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {item.image ? (
+                            <div className="w-24 h-full overflow-hidden bg-slate-900 flex-shrink-0">
+                              <img
+                                src={item.image}
+                                alt={item.title}
+                                className="h-full w-full object-cover"
+                                style={{ objectPosition: `${item.imagePositionX}% ${item.imagePositionY}%` }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex w-24 h-full items-center justify-center bg-white/5 flex-shrink-0">
+                              <ImageIcon className="h-6 w-6 text-slate-500" />
+                            </div>
+                          )}
+                          <div className="flex flex-1 items-center gap-4 px-4 overflow-hidden">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-base line-clamp-1">{item.title}</div>
+                              <div className="text-sm text-slate-400 line-clamp-1 mt-0.5">{item.description || item.content || "Bez obsahu"}</div>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <AppButton variant="outline" onClick={() => handleCopyPrompt(item.id, item.content)}>
+                                {copiedItemId === item.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                              </AppButton>
+                              {item.link ? (
+                                <a href={normalizeUrl(item.link)} target="_blank" rel="noreferrer">
+                                  <AppButton variant="ghost">
+                                    <ExternalLink className="h-4 w-4" />
+                                    Link
+                                  </AppButton>
+                                </a>
+                              ) : null}
+                              <button type="button" onClick={() => startEdit(item)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button type="button" onClick={() => handleDeleteItem(item.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </Card>
+                  </motion.div>
                 ))}
               </div>
             )}
